@@ -1,0 +1,122 @@
+%HEADER%
+library ieee;
+use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
+
+library std;
+use std.env.all;
+
+library work;
+use work.domain_param_pkg.all;
+use work.html_report_pkg.all;
+use work.logger_pkg.all;
+use work.project_logger_pkg.all;
+
+entity %ENTITY_NAME%_tb is
+end entity %ENTITY_NAME%_tb;
+
+architecture testbench of %ENTITY_NAME%_tb is
+
+    -- Domain constants
+%CONSTANT%
+
+    -- Tb constants
+    constant C_CLOCK_PERIOD: time := 10 ns;
+
+    -- DUT
+    component %ENTITY_NAME% is
+%GENERIC%
+%PORT%
+    end component;
+
+    -- Signals
+%SIGNAL%
+
+begin -- architecture testbench
+
+    clk_stiAS : clk_sti   <= not clk_sti after (C_CLOCK_PERIOD / 2);
+
+    -- DUT instance
+    %ENTITY_NAME%_i : entity work.%ENTITY_NAME%
+%GENERIC_MAP%
+%PORT_MAP%
+
+    stimulus : process is
+
+    variable cycle_min : natural := natural'high;
+    variable cycle_avg : natural := 0;
+    variable cycle_max : natural := 0;
+    variable op_count  : natural := 0;
+
+    procedure func(
+%FUNC_PARAM%
+    ) is
+        variable cycle: natural := 0;
+%FUNC_VAR%
+    begin
+
+        while done_obs /= '1' loop
+            wait until rising_edge(clk_sti);
+        end loop;
+
+%DRIVE%
+        start_sti <= '1';
+
+        wait for C_CLOCK_PERIOD * 1;
+        cycle := cycle + 1;
+        start_sti <= '0';
+
+        wait for C_CLOCK_PERIOD * 1;
+        cycle := cycle + 1;
+
+        while done_obs /= '1' loop
+            wait until rising_edge(clk_sti);
+            cycle := cycle + 1;
+        end loop;
+
+        if cycle < cycle_min then cycle_min := cycle; end if;
+        if cycle > cycle_max then cycle_max := cycle; end if;
+        cycle_avg := cycle_avg + cycle;
+        op_count  := op_count + 1;
+
+%COMPARE%
+
+    end func;
+
+    begin -- process stimulis
+
+        -- Open log file in the simulation folder
+        logger.set_log_file("%ENTITY_NAME%_tb.log");
+
+        -- Open HTML report in the same folder of tb source
+        logger.set_html_report_file("../../../../../%ENTITY_NAME%_tb.html",
+                                    "Testbench report: %ENTITY_NAME%",
+                                    "");
+
+        wait for C_CLOCK_PERIOD * 1;
+        rst_sti <= '1';
+        wait for C_CLOCK_PERIOD * 10;
+        rst_sti <= '0';
+        wait for C_CLOCK_PERIOD * 10;
+
+%ACTIONS%
+        wait for C_CLOCK_PERIOD * 10;
+
+        if op_count = 0 then
+            logger.log_error("No operation done, check tb generation");
+        else
+            cycle_avg := integer( real(cycle_avg) / real(op_count) );
+            logger.log_note("Number of operations: "         & integer'image(op_count)  );
+            logger.log_note("Min cycles per operation: "     & integer'image(cycle_min) );
+            logger.log_note("Average cycles per operation: " & integer'image(cycle_avg) );
+            logger.log_note("Max cycles per operation: "     & integer'image(cycle_max) );
+        end if;
+
+        logger.final_report;
+
+        -- Stop Simulation
+        stop(0);
+
+    end process stimulus;
+
+end architecture testbench;

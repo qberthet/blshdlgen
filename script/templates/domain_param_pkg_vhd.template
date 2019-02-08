@@ -1,0 +1,188 @@
+%HEADER%
+library ieee;
+use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
+use ieee.std_logic_textio.all;
+
+library std;
+use std.env.all;
+
+package domain_param_pkg is
+
+    ----------------------------------------------------------------------------
+    -- Ground prime field
+
+    -- number of bits of prime P
+    constant c_K: natural := %K%;
+
+    -- field prime
+    constant c_P: std_logic_vector(c_K-1 downto 0) := %P%;
+
+    -- field helper constants
+    constant c_FP_ZERO:     std_logic_vector(c_K-1 downto 0) := (others => '0');
+    constant c_FP_ONE:      std_logic_vector(c_K-1 downto 0) := (0 =>'1', others => '0');
+    constant c_FP_MIN_ONE:  std_logic_vector(c_K-1 downto 0) := %FP_MIN_ONE%;
+    constant c_FP_TWO:      std_logic_vector(c_K-1 downto 0) := (1 =>'1', others => '0');
+    constant c_FP_TREE:     std_logic_vector(c_K-1 downto 0) := (0 =>'1', 1 =>'1', others => '0');
+    constant c_FP_INV_FOUR: std_logic_vector(c_K-1 downto 0) := (%FP_INV_FOUR%);
+
+    subtype Fp_element_u is std_logic_vector;
+    subtype Fp_element is Fp_element_u(c_K-1 downto 0);
+
+    function to_string(el : std_logic_vector) return String;
+
+    ----------------------------------------------------------------------------
+    -- Elliptic curve E1
+
+    constant c_E1_A1: Fp_element := %E1_A1%;
+    constant c_E1_A2: Fp_element := %E1_A2%;
+    constant c_E1_A3: Fp_element := %E1_A3%;
+    constant c_E1_A4: Fp_element := %E1_A4%;
+    constant c_E1_A6: Fp_element := %E1_A6%;
+
+    type ec1_point is record
+        x:  Fp_element;
+        y:  Fp_element;
+        ii: std_logic;
+    end record ec1_point;
+
+    constant EC1_POINT_I: ec1_point := (
+        x => c_FP_ZERO,
+        y => c_FP_ZERO,
+        ii => '1'
+    );
+
+    -- Curve generator
+    constant c_E1_G: ec1_point := (
+        x => %c_E1_G_x%,
+        y => %c_E1_G_y%,
+        ii => '0'
+    );
+
+    -- Curve co-factor
+    constant c_C: Fp_element := %c_C%;
+
+    -- Generator order
+    constant c_E1_G_n: Fp_element := %c_E1_G_n%;
+
+    -- Map to point exponent
+    constant c_MTP_EXP: Fp_element := %MTP_EXP%;
+
+    -- Compressed point type
+    subtype compr_ec1_point is Fp_element_u(c_K downto 0);
+
+    -- ec helpers functions
+    function to_string(pt : ec1_point) return String;
+
+    ----------------------------------------------------------------------------
+    -- Extension field
+
+    -- embedding degree, number of field elements coefficients
+    constant c_M: natural := %M%;
+
+    type    Fpm_element_u    is array(integer range <>) of Fp_element;
+    subtype Fpm_element      is Fpm_element_u(c_M-1 downto 0);
+    subtype Fpm_element_long is Fpm_element_u(c_M downto 0);
+
+    -- field irreducible polynomial
+    constant c_F: Fpm_element_long := %F%;
+
+    constant c_FPM_ZERO:    Fpm_element := (others => c_FP_ZERO);
+    constant c_FPM_ONE:     Fpm_element := (0 => (0 =>'1', others => '0'), others => c_FP_ZERO);
+    constant c_FPM_MIN_ONE: Fpm_element := (0 => c_FP_MIN_ONE, others => c_FP_ZERO);
+    constant c_FPM_TWO:     Fpm_element := (0 => (1 =>'1', others => '0'), others => c_FP_ZERO);
+    constant c_FPM_TREE:    Fpm_element := (0 => (0 =>'1', 1 =>'1', others => '0'), others => c_FP_ZERO);
+
+    -- field helpers functions
+    function to_string(el : Fpm_element) return String;
+
+    ----------------------------------------------------------------------------
+    -- Scalar bit length. needed for some testbenches, same size as field element
+    -- FIXME
+    constant c_N: natural := (c_K*c_M);
+
+    ----------------------------------------------------------------------------
+    -- Elliptic curve E2
+
+    constant c_E2_A1: Fpm_element := %E2_A1%;
+    constant c_E2_A2: Fpm_element := %E2_A2%;
+    constant c_E2_A3: Fpm_element := %E2_A3%;
+    constant c_E2_A4: Fpm_element := %E2_A4%;
+    constant c_E2_A6: Fpm_element := %E2_A6%;
+
+    -- ec twist constant
+    constant c_Z: Fpm_element := %Z%;
+
+    type ec2_point is record
+        x:  Fpm_element;
+        y:  Fpm_element;
+        ii: std_logic;
+    end record ec2_point;
+
+    constant EC2_POINT_I: ec2_point := (
+        x => c_Fpm_ZERO,
+        y => c_Fpm_ZERO,
+        ii => '1'
+    );
+
+    -- ec helpers functions
+    function to_string(pt : ec2_point) return String;
+
+    --
+    ----------------------------------------------------------------------------
+
+end domain_param_pkg;
+
+package body domain_param_pkg is
+
+    ----------------------------------------------------------------------------
+    -- Ground field helpers
+
+    function to_string(el : std_logic_vector) return String is
+    begin
+        return "0x" & to_hstring(el);
+    end to_string;
+
+    ----------------------------------------------------------------------------
+    -- Extension field helpers
+
+    function to_string(el : Fpm_element) return String is
+        variable i : natural := 1;
+        -- Compute the string length based on c_P and c_M
+        variable temp : string(1 to (((c_P'length + 3)/4 + 2) + (c_M - 1) * ((c_P'length + 3)/4 + 4))) := (others => 'x');
+    begin
+        temp(i) := '0'; i:=i+1;
+        temp(i) := 'x'; i:=i+1;
+        temp(i to i + (c_P'length+3)/4 - 1) := to_hstring(el(c_M-1));
+        i:=i+(c_P'length+3)/4;
+        for j in c_M-2 downto 0 loop
+            temp(i) := ','; i:=i+1;
+            temp(i) := ' '; i:=i+1;
+            temp(i) := '0'; i:=i+1;
+            temp(i) := 'x'; i:=i+1;
+            temp(i to i + (c_P'length+3)/4 - 1) := to_hstring(el(j));
+            i:=i+(c_P'length+3)/4;
+        end loop;
+        return temp;
+    end to_string;
+
+    ----------------------------------------------------------------------------
+    -- EC E1 helpers
+
+    function to_string(pt : ec1_point) return String is
+    begin
+        return "( " & to_string(pt.x) & " : " & to_string(pt.y) & " : " & std_logic'image(pt.ii) & " )";
+    end to_string;
+
+    ----------------------------------------------------------------------------
+    -- EC E2 helpers
+
+    function to_string(pt : ec2_point) return String is
+    begin
+        return "( " & to_string(pt.x) & " : " & to_string(pt.y) & " : " & std_logic'image(pt.ii) & " )";
+    end to_string;
+
+    --
+    ----------------------------------------------------------------------------
+
+end domain_param_pkg;
